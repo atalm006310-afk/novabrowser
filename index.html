@@ -1,1 +1,349 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nova Browser</title>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: #0b1020;
+  color: white;
+  font-family: Arial, sans-serif;
+}
+
+header {
+  padding: 20px;
+  background: #151d32;
+  color: #8b9cff;
+  font-size: 23px;
+  font-weight: bold;
+}
+
+#tabs {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  background: #101729;
+  overflow-x: auto;
+}
+
+.tab {
+  padding: 11px 17px;
+  background: #27334c;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tab.active { background: #5865f2; }
+
+.toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  background: #151d32;
+}
+
+button {
+  border: none;
+  border-radius: 8px;
+  padding: 12px;
+  background: #293650;
+  color: white;
+  cursor: pointer;
+}
+
+button:hover { background: #5865f2; }
+
+input {
+  flex: 1;
+  min-width: 0;
+  padding: 13px;
+  background: #0b1020;
+  color: white;
+  border: 1px solid #394967;
+  border-radius: 9px;
+}
+
+#home {
+  min-height: 75vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle, #1d3159, #0b1020);
+  text-align: center;
+  padding: 20px;
+}
+
+#home h1 {
+  font-size: 65px;
+  color: #8b9cff;
+  margin: 0;
+}
+
+#home p { color: #aab8d4; }
+
+.shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+#status {
+  padding: 10px;
+  color: #aab8d4;
+  font-size: 12px;
+}
+
+iframe {
+  width: 100%;
+  height: calc(100vh - 170px);
+  border: none;
+  background: white;
+}
+</style>
+</head>
+
+<body>
+
+<header>✦ NOVA BROWSER</header>
+
+<div id="tabs"></div>
+
+<div class="toolbar">
+  <button onclick="back()">←</button>
+  <button onclick="forward()">→</button>
+  <button onclick="reload()">↻</button>
+
+  <input id="address"
+    placeholder="Search or enter a website..."
+    onkeydown="if(event.key==='Enter')go()">
+
+  <button onclick="go()">GO</button>
+</div>
+
+<div id="status">Welcome to Nova</div>
+<div id="content"></div>
+
+<script>
+let pages = [{
+  name: "New tab",
+  url: "",
+  history: [],
+  position: -1
+}];
+
+let current = 0;
+let bookmarks = [];
+
+try {
+  bookmarks = JSON.parse(
+    localStorage.getItem("nova-bookmarks") || "[]"
+  );
+} catch {
+  bookmarks = [];
+}
+
+function drawTabs() {
+  const tabs = document.getElementById("tabs");
+  tabs.innerHTML = "";
+
+  pages.forEach((page, index) => {
+    const tab = document.createElement("button");
+    tab.className = "tab" +
+      (index === current ? " active" : "");
+    tab.textContent = page.name + " ×";
+
+    tab.onclick = () => {
+      if (index === current && pages.length > 1) {
+        pages.splice(index, 1);
+        current = Math.max(0, current - 1);
+      } else {
+        current = index;
+      }
+      render();
+    };
+
+    tabs.appendChild(tab);
+  });
+
+  const add = document.createElement("button");
+  add.className = "tab";
+  add.textContent = "+";
+  add.onclick = newTab;
+  tabs.appendChild(add);
+}
+
+function render() {
+  drawTabs();
+
+  const page = pages[current];
+  document.getElementById("address").value = page.url;
+
+  const content = document.getElementById("content");
+  content.innerHTML = "";
+
+  if (!page.url) {
+    content.innerHTML = `
+      <div id="home">
+        <h1>NOVA</h1>
+        <p>A new place to browse.</p>
+        <div class="shortcuts">
+          <button onclick="search('Google')">Google</button>
+          <button onclick="search('YouTube')">YouTube</button>
+          <button onclick="search('Wikipedia')">Wikipedia</button>
+          <button onclick="showBookmarks()">Bookmarks</button>
+        </div>
+      </div>`;
+    return;
+  }
+
+  const frame = document.createElement("iframe");
+  frame.title = "Nova webpage";
+  frame.setAttribute("sandbox", "allow-scripts allow-forms");
+  frame.referrerPolicy = "no-referrer";
+  frame.src = page.url;
+
+  content.appendChild(frame);
+}
+
+function getURL(value) {
+  value = value.trim();
+  if (!value) return null;
+
+  if (/^https?:\/\//i.test(value)) {
+    try {
+      const url = new URL(value);
+      return ["https:", "http:"].includes(url.protocol)
+        ? url.href : null;
+    } catch {
+      return null;
+    }
+  }
+
+  if (/^[\w.-]+\.[a-z]{2,}([/:?#]|$)/i.test(value)) {
+    return "https://" + value;
+  }
+
+  return "https://www.google.com/search?q=" +
+    encodeURIComponent(value);
+}
+
+function navigate(value) {
+  const url = getURL(value);
+
+  if (!url) {
+    document.getElementById("status").textContent =
+      "Enter a valid search or website.";
+    return;
+  }
+
+  const page = pages[current];
+  page.history = page.history.slice(0, page.position + 1);
+  page.history.push(url);
+  page.position++;
+  page.url = url;
+
+  try {
+    page.name = new URL(url).hostname;
+  } catch {
+    page.name = "Search";
+  }
+
+  document.getElementById("status").textContent =
+    "Opening " + page.name;
+
+  render();
+}
+
+function go() {
+  navigate(document.getElementById("address").value);
+}
+
+function search(value) {
+  navigate(value);
+}
+
+function newTab() {
+  pages.push({
+    name: "New tab",
+    url: "",
+    history: [],
+    position: -1
+  });
+
+  current = pages.length - 1;
+  render();
+}
+
+function back() {
+  const page = pages[current];
+  if (page.position > 0) {
+    page.position--;
+    page.url = page.history[page.position];
+    render();
+  }
+}
+
+function forward() {
+  const page = pages[current];
+  if (page.position < page.history.length - 1) {
+    page.position++;
+    page.url = page.history[page.position];
+    render();
+  }
+}
+
+function reload() {
+  render();
+}
+
+function showBookmarks() {
+  if (!bookmarks.length) {
+    alert("No bookmarks saved.");
+    return;
+  }
+
+  const choice = prompt(
+    bookmarks.map((url, i) => `${i + 1}. ${url}`).join("\n") +
+    "\nEnter a bookmark number:"
+  );
+
+  const index = Number(choice) - 1;
+
+  if (bookmarks[index]) navigate(bookmarks[index]);
+}
+
+function saveBookmark() {
+  const url = pages[current].url;
+
+  if (!url) return;
+
+  if (!bookmarks.includes(url)) {
+    bookmarks.push(url);
+    localStorage.setItem(
+      "nova-bookmarks",
+      JSON.stringify(bookmarks)
+    );
+  }
+
+  document.getElementById("status").textContent =
+    "Bookmark saved!";
+}
+
+render();
+</script>
+
+</body>
+</html>
+
